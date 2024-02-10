@@ -806,7 +806,7 @@ if __name__ == '__main__':
         model = pruner.Prune(pruning_mask, basic_mask, model, clnum)
         
         # Optionally, build and apply kernel mask to the next convolutional layer
-        if k < len(conv_dict):
+        if k < len(conv_dict)-1:
             print('set up mask for layer l+1')
             kernel_mask = pruner.build_kernel_mask(basic_mask, clnum, nclnum, model)
             print('pruning layer l+1')    
