@@ -42,73 +42,8 @@ import torchsummary
 
 from torchsummary import summary
 
-if __name__ == '__main__':
-    device = torch.device('cuda')
 
-
-
-    model1 = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar10_vgg16_bn", pretrained=True)
-    model2 = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar10_vgg19_bn", pretrained=True)
-    model3 = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar10_resnet56", pretrained=True)
-
-    # model1.to(device='cuda')
-    # model1.to(device='cuda')
-    # model1.to(device='cuda')
-
-
-    # Load Dataset
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
-
-
-    #######################
-
-
-
-    train_set = torchvision.datasets.CIFAR10('./datasets', train=True, 
-                                            download=True, transform=transform)
-    test_set = torchvision.datasets.CIFAR10('./datasets', train=False, 
-                                            download=True, transform=transform)
-    # Number of subprocesses to use for data loading
-    num_workers = 4
-    # How many samples per batch to load
-    batch_size = 32
-    # Percentage of training set to use as validation
-    valid_size = 0.5
-
-    num_test = len(test_set)
-    indices = list(range(num_test))
-    np.random.shuffle(indices)
-    split = int(np.floor(valid_size * num_test))
-    test_idx, valid_idx = indices[split:], indices[:split]
-
-    # Define samplers for obtaining training and validation batches
-    test_sampler = SubsetRandomSampler(test_idx)
-    valid_sampler = SubsetRandomSampler(valid_idx)
-
-
-    # Prepare data loaders (combine dataset and sampler)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=256, 
-                                            num_workers=num_workers)
-    valid_loader = torch.utils.data.DataLoader(test_set, batch_size= 1, sampler=valid_sampler, 
-                                            num_workers=num_workers)
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=256, sampler=test_sampler, num_workers=num_workers)
-
-    dataiter2 = iter(valid_loader)
-    dataiter = iter(test_loader)
-
-
-
-    # conv_dict_feats = [3,7,10,14,17,21,24,28]           #VGG11
-    # conv_dict_feats = [3,7,10,14,17,21,24,28]
-    conv_dict_feats = [2,6,9,13,16,19,23,26,29,33,36,39,43]
-
-    # conv_dict = [0,4,8,11,15,18,22,25]
-    conv_dict = [0,3,7,10,14,17,20,24,27,30,34,37,40
-
-    class FilterStatsCollector:  
+class FilterStatsCollector:  
     def __init__(self, model, dataset, layer, device='cpu'):
         self.model = model.to(device)
         self.dataset = dataset
@@ -744,7 +679,14 @@ class WitnessPrune:
         # Prune the convolutional filters using pruning_mask
         prune.custom_from_mask(conv_layer, name='weight', mask=pruning_mask)
 
-        return 
+        return model
+    def Prune3(self, kernel_mask, model, lnum):
+        conv_layer = model.features[lnum]
+        
+        # Prune the convolutional filters using pruning_mask
+        prune.custom_from_mask(conv_layer, name='weight', mask=kernel_mask)
+
+        return model
     
     def build_kernel_mask(self, basic_mask, clnum, nclnum, model):
         # Get the current and next convolutional layers from the model
@@ -768,3 +710,106 @@ class WitnessPrune:
                 # If the output channel is pruned, set the corresponding slice of the kernel mask tensor to 0
                 kernel_mask[:, i, :, :] = 0
         return kernel_mask
+
+
+if __name__ == '__main__':
+    device = torch.device('cuda')
+
+
+
+    print('loading model')
+    model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_vgg16_bn", pretrained=True)
+
+    print('setting up dataset')
+    # Prepare CIFAR10 test set
+    transform = transforms.Compose([transforms.ToTensor(),
+                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+
+    testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transf
+
+
+  
+
+    #######################
+
+
+
+    # train_set = torchvision.datasets.CIFAR10('./datasets', train=True, 
+    #                                         download=True, transform=transform)
+    # test_set = torchvision.datasets.CIFAR10('./datasets', train=False, 
+    #                                         download=True, transform=transform)
+
+        
+    num_samples = 2000
+    
+    # Generate a random list of indices
+    indices = torch.randperm(len(test_set)).tolist()[:num_samples]
+    
+    # Create a subset
+    subset = Subset(test_set, indices)
+    # Number of subprocesses to use for data loading
+    num_workers = 4
+
+
+    num_samples_per_class = 200
+    num_samples_per_class_complement = 1500
+    budget = 0.5
+
+
+
+
+    # conv_dict_feats = [3,7,10,14,17,21,24,28]           #VGG11
+    # conv_dict_feats = [3,7,10,14,17,21,24,28]
+    conv_dict_feats = [2,6,9,13,16,19,23,26,29,33,36,39,43]
+
+    # conv_dict = [0,4,8,11,15,18,22,25]
+    conv_dict = [0,3,7,10,14,17,20,24,27,30,34,37,40]
+
+    for k in range(len(conv_dict)):
+        
+        clnum = conv_dict[k]
+        nclnum = conv_dict[k+1]
+        # Instantiate FilterStatsCollector
+        print('set up stats collector')
+        collector = FilterStatsCollector(model=model, dataset=testset, layer=model.features[clnum])
+        
+        # Compute class means, class means Z, and Sj
+        print('computing class means')
+
+        collector.compute_class_means(num_samples_per_class)
+
+
+        # print('computing uncentered variances')
+        # collector.compute_class_means_Z(num_samples_per_class)
+
+        print('computing variances')
+
+        collector.compute_class_variances(num_samples_per_class)
+
+        
+        # Compute Fisher scores and saliency
+        print('computing fisher scores and saliencies')
+        fisher_scores, saliency = collector.get_fish_saliency()
+
+        print('setting up pruner')
+        pruner = WitnessPrune(model, model.features[clnum], budget, testset)
+        
+        # Get basic masks and pruning mask
+        print('setting up basic mask')
+        basic_mask = pruner.get_basic_masks(saliency)
+        
+        print('setting up pruning mask')
+        pruning_mask = pruner.build_pruning_mask(basic_mask)
+        
+        # Apply pruning
+        print('pruning layer l')
+        model = pruner.Prune(pruning_mask, basic_mask, model, clnum)
+        
+        # Optionally, build and apply kernel mask to the next convolutional layer
+        if k < len(conv_dict):
+            print('set up mask for layer l+1')
+            kernel_mask = pruner.build_kernel_mask(basic_mask, clnum, nclnum, model)
+            print('pruning layer l+1')    
+            pruner.Prune2(kernel_mask, model, clnum)
+
+
