@@ -810,6 +810,6 @@ if __name__ == '__main__':
             print('set up mask for layer l+1')
             kernel_mask = pruner.build_kernel_mask(basic_mask, clnum, nclnum, model)
             print('pruning layer l+1')    
-            pruner.Prune2(kernel_mask, model, clnum)
+            model = pruner.Prune2(kernel_mask, model, clnum)
 
 
